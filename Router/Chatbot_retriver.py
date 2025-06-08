@@ -4,13 +4,13 @@ from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 from Router.exception_utils import log_exception
-from Router.embedding import create_chroma_store
+from Router.embedding import store_embeddings_in_chroma
 
 
 load_dotenv()
 
 # Initialize the retriever with similarity search
-retriever = vector_store.as_retriever(search_type="similarity", search_kwargs={"k": 4})
+retriever = store_embeddings_in_chroma.as_retriever(search_type="similarity", search_kwargs={"k": 4})
 
 # Initialize the language model with GPT-4
 llm = ChatOpenAI(model="gpt-4", temperature=0.2)
@@ -46,7 +46,7 @@ parallel_chain = RunnableParallel({
 parser = StrOutputParser()
 main_chain = parallel_chain | prompt | llm | parser
 
-def chat_with_retrieval(user_question):
+def augmented_retrieval(user_question):
     """
     Function to handle user questions with retrieval augmentation
     
