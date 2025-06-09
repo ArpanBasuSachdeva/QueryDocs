@@ -1,22 +1,38 @@
-# Core dependencies
+# Web Framework
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
+# Core LangChain dependencies
 langchain-core>=0.1.0
 langchain-openai>=0.0.5
 langchain-community>=0.0.10
-python-dotenv>=1.0.0
-SQLAlchemy>=2.0.0
-torch>=2.0.0
-sentence-transformers>=2.2.0
-chromadb>=0.4.0
-tiktoken>=0.5.0
+langchain>=0.1.0
 
 # Database and ORM
 sqlalchemy>=2.0.0
 alembic>=1.12.0
 
-# Vector store and embeddings
+# Machine Learning and Embeddings
+torch>=2.0.0
+sentence-transformers>=2.2.0
+transformers>=4.30.0
+
+# Vector stores
 faiss-cpu>=1.7.4
 chromadb>=0.4.0
 
-# Utilities
+# Document processing
+pypdf>=3.15.0
+
+# Environment and configuration
 python-dotenv>=1.0.0
-tiktoken>=0.5.0 
+
+# Text processing
+tiktoken>=0.5.0
+
+# Data manipulation
+pandas>=2.0.0
+
+# Additional dependencies for Hugging Face
+huggingface-hub>=0.16.0
+tokenizers>=0.13.0 
