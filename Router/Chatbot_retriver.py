@@ -27,17 +27,14 @@ except Exception as e:
 # Create a prompt template for the chatbot
 prompt = PromptTemplate(
     template="""
-    You are a helpful AI assistant that provides accurate and relevant information.
-    Use the following context to answer the user's question.
-    If the context doesn't contain enough information, say you don't know.
-    
-    Context: {context}
-    
-    User Question: {question}
-    
-    Please provide a clear and concise answer:
+    "You are an assistant that answers strictly using the context below. "
+            "Do not add any reasoning not present in the context. "
+            "If the answer is not there, reply 'Answer not found in context.'\n\n"
+            f"Context:\n{contexts}\n\n"
+            f"Question: {question}\n"
+            "Answer:"
     """,
-    input_variables=['context', 'question']
+    input_variables=['contexts','question']
 )
 
 def format_docs(retrieved_docs):
@@ -48,7 +45,7 @@ def format_docs(retrieved_docs):
 # Create a parallel chain for processing
 if retriever and llm:
     parallel_chain = RunnableParallel({
-        'context': retriever | RunnableLambda(format_docs),
+        'contexts': retriever | RunnableLambda(format_docs),
         'question': RunnablePassthrough()
     })
     
