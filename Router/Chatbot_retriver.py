@@ -4,16 +4,25 @@ from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 from Router.exception_utils import log_exception
-from Router.embedding import store_embeddings_in_chroma
+from Router.embedding import DocumentLoaderManager
 
 
 load_dotenv()
 
 # Initialize the retriever with similarity search
-retriever = store_embeddings_in_chroma.as_retriever(search_type="similarity", search_kwargs={"k": 4})
+try:
+    vector_store = DocumentLoaderManager.load_embeddings()
+    retriever = vector_store.as_retriever(search_type="similarity", search_kwargs={"k": 4})
+except Exception as e:
+    print(f"Warning: Could not load embeddings: {e}")
+    retriever = None
 
 # Initialize the language model with GPT-4
-llm = ChatOpenAI(model="gpt-4", temperature=0.2)
+try:
+    llm = ChatOpenAI(model="gpt-4", temperature=0.2)
+except Exception as e:
+    print(f"Warning: Could not initialize OpenAI client: {e}")
+    llm = None
 
 # Create a prompt template for the chatbot
 prompt = PromptTemplate(
@@ -37,14 +46,17 @@ def format_docs(retrieved_docs):
     return context_text
 
 # Create a parallel chain for processing
-parallel_chain = RunnableParallel({
-    'context': retriever | RunnableLambda(format_docs),
-    'question': RunnablePassthrough()
-})
-
-# Create the main chain with output parsing
-parser = StrOutputParser()
-main_chain = parallel_chain | prompt | llm | parser
+if retriever and llm:
+    parallel_chain = RunnableParallel({
+        'context': retriever | RunnableLambda(format_docs),
+        'question': RunnablePassthrough()
+    })
+    
+    # Create the main chain with output parsing
+    parser = StrOutputParser()
+    main_chain = parallel_chain | prompt | llm | parser
+else:
+    main_chain = None
 
 def augmented_retrieval(user_question):
     """
@@ -57,13 +69,22 @@ def augmented_retrieval(user_question):
         str: The AI's response based on retrieved context
     """
     try:
+        if retriever is None:
+            return "I'm sorry, but I don't have access to any documents right now. Please upload a document first to enable context-aware responses."
+        
+        if llm is None:
+            return "I'm sorry, but the AI language model is not available. Please set your OPENAI_API_KEY environment variable."
+        
+        if main_chain is None:
+            return "I'm sorry, but the chat system is not properly initialized. Please check your configuration."
+        
         response = main_chain.invoke(user_question)
         return response
     except Exception as e:
         # Log the exception with details
-        log_exception(e, "Error in chat_with_retrieval", {
+        log_exception(e, "Error in augmented_retrieval", {
             "user_question": user_question,
-            "function": "chat_with_retrieval"
+            "function": "augmented_retrieval"
         })
         return f"Sorry, I encountered an error: {str(e)}"
 
@@ -74,5 +95,5 @@ if __name__ == "__main__":
         if user_input.lower() in ['quit', 'exit', 'bye']:
             print("Goodbye!")
             break
-        response = chat_with_retrieval(user_input)
+        response = augmented_retrieval(user_input)
         print(f"\nAssistant: {response}")

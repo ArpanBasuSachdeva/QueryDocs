@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from .database import Base
+from .table_creater import Base
 
 class User(Base):
     __tablename__ = "users"
@@ -20,8 +20,11 @@ class Embedding(Base):
     __tablename__ = "embeddings"
 
     id = Column(Integer, primary_key=True, index=True)
+    file_path = Column(String, index=True)  # Path to the uploaded document
     hash_code = Column(String, unique=True, index=True)
     embedding_vector = Column(Text)  # Store as JSON string
+    chunk_size = Column(Integer, default=500)  # Chunk size used for embeddings
+    chunk_overlap = Column(Integer, default=200)  # Chunk overlap used for embeddings
     created_at = Column(DateTime, default=datetime.utcnow)
     user_id = Column(Integer, ForeignKey("users.id"))
 

@@ -1,0 +1,24 @@
+Welcome to Copy Hai JI - Document Upload System
+
+This is a test document to demonstrate the document upload and embedding functionality.
+
+Key Features:
+- Document upload with drag and drop interface
+- Automatic embedding creation using HuggingFace transformers
+- Support for multiple file formats: PDF, TXT, MD, CSV
+- Configurable chunk size and overlap settings
+- Real-time progress tracking
+- Beautiful and modern UI design
+
+Technical Details:
+The system uses FAISS for vector storage and retrieval, allowing for efficient similarity search.
+Documents are processed using RecursiveCharacterTextSplitter to create meaningful chunks.
+The embedding model used is sentence-transformers/all-MiniLM-L6-v2 for high-quality embeddings.
+
+Use Cases:
+1. Knowledge base creation
+2. Document search and retrieval
+3. Question answering systems
+4. Content analysis and similarity matching
+
+This document will be processed into embeddings that can be used for retrieval-augmented generation (RAG) applications. 

@@ -1,5 +1,4 @@
 import traceback
-from .database import ExceptionLog
 
 # Utility function to log exceptions to the database
 def log_exception(error, function_name=None, context=None, session=None, user_id=None):
@@ -13,6 +12,9 @@ def log_exception(error, function_name=None, context=None, session=None, user_id
         user_id: (Optional) ID of the user related to the error
     """
     if session:
+        # Import here to avoid circular imports
+        from .relations import ExceptionLog
+        
         error_message = str(error)
         stack_trace = traceback.format_exc()
         exception_log = ExceptionLog(

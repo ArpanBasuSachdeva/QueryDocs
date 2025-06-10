@@ -1,4 +1,4 @@
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.document_loaders import TextLoader, CSVLoader, PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -85,6 +85,65 @@ class DocumentLoaderManager:
             allow_dangerous_deserialization=True
         )
         return vector_store
+    
+    @staticmethod
+    def upload_and_create_embeddings(file_path: str, chunk_size: int = 500, 
+                                   chunk_overlap: int = 200, 
+                                   embedding_dir: str = "Router/embedding",
+                                   index_name: str = "document_index"):
+        """
+        Complete workflow: validate file, create embeddings, and return metadata.
+        This method is specifically designed for API upload endpoints.
+        """
+        try:
+            # Validate file exists
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"File not found: {file_path}")
+            
+            # Validate file type
+            allowed_extensions = {'.txt', '.md', '.csv', '.pdf'}
+            file_extension = Path(file_path).suffix.lower()
+            
+            if file_extension not in allowed_extensions:
+                raise ValueError(f"Unsupported file type: {file_extension}")
+            
+            # Create embeddings
+            vector_store = DocumentLoaderManager.create_and_store_embeddings(
+                file_path=file_path,
+                embedding_dir=embedding_dir,
+                index_name=index_name,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap
+            )
+            
+            # Get file info
+            file_size = os.path.getsize(file_path)
+            filename = Path(file_path).name
+            
+            return {
+                "success": True,
+                "vector_store": vector_store,
+                "file_info": {
+                    "filename": filename,
+                    "file_path": file_path,
+                    "file_size": file_size,
+                    "chunk_size": chunk_size,
+                    "chunk_overlap": chunk_overlap
+                }
+            }
+            
+        except Exception as e:
+            log_exception(str(e), "upload_and_create_embeddings")
+            return {
+                "success": False,
+                "error": str(e),
+                "file_info": {
+                    "filename": Path(file_path).name if file_path else "Unknown",
+                    "file_path": file_path,
+                    "chunk_size": chunk_size,
+                    "chunk_overlap": chunk_overlap
+                }
+            }
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 

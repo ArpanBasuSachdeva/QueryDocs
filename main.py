@@ -1,21 +1,23 @@
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
-from functioncaller.database import engine, get_db
-from functioncaller import model
+from Router.table_creater import engine, get_db, Base
+from Router.relations import ExceptionLog, ChatbotLog, Embedding
 import uvicorn
+import os
+from pathlib import Path
+import shutil
 
 # Import Router modules for the three nodes
 from Router.Chatbot_retriver import augmented_retrieval
 from Router.exception_utils import log_exception
 from Router.embedding import DocumentLoaderManager
-from Router.relations import ExceptionLog, ChatbotLog, Embedding
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 
 # Create database tables
-model.Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
@@ -45,6 +47,14 @@ class FileUploadResponse(BaseModel):
     file_path: str
     filename: str
 
+class DocumentUploadResponse(BaseModel):
+    message: str
+    file_path: str
+    filename: str
+    chunk_size: int
+    chunk_overlap: int
+    embedding_id: int
+
 # =============================================================================
 # ROOT AND HEALTH ENDPOINTS
 # =============================================================================
@@ -53,232 +63,6 @@ class FileUploadResponse(BaseModel):
 @app.get("/")
 async def root():
     return {"message": "Welcome to the Immune File(Copy Hai JI💀💀)"}
-
-@app.get("/upload", response_class=HTMLResponse)
-async def upload_form():
-    """
-    Get chat history for a specific user.
-    """
-    return {"message": "Welcome to the Immune File(Copy Hai JI💀💀)"}
-
-
-@app.get("/ee")
-async def offline_game():
-    """
-    Offline skull game - like the Chrome dinosaur game but with skull emoji
-    """
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Skull Runner Game</title>
-        <style>
-            body {
-                margin: 0;
-                padding: 0;
-                background: #f7f7f7;
-                font-family: Arial, sans-serif;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                min-height: 100vh;
-            }
-            #gameContainer {
-                text-align: center;
-                background: white;
-                padding: 20px;
-                border-radius: 10px;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            }
-            #gameCanvas {
-                border: 2px solid #535353;
-                background: #f7f7f7;
-            }
-            #score {
-                font-size: 24px;
-                margin-bottom: 10px;
-                color: #535353;
-            }
-            #instructions {
-                margin-top: 10px;
-                color: #8b8b8b;
-            }
-        </style>
-    </head>
-    <body>
-        <div id="gameContainer">
-            <div id="score">Score: 0</div>
-            <canvas id="gameCanvas" width="800" height="200"></canvas>
-            <div id="instructions">Press SPACE or click to jump!</div>
-        </div>
-
-        <script>
-            const canvas = document.getElementById('gameCanvas');
-            const ctx = canvas.getContext('2d');
-            const scoreElement = document.getElementById('score');
-
-            // Game variables
-            let gameSpeed = 3;
-            let gravity = 0.5;
-            let score = 0;
-            let gameRunning = true;
-
-            // Skull player
-            const skull = {
-                x: 50,
-                y: 150,
-                width: 40,
-                height: 40,
-                dy: 0,
-                jumpPower: 12,
-                grounded: false,
-                emoji: '💀'
-            };
-
-            // Obstacles array
-            const obstacles = [];
-
-            // Ground
-            const ground = {
-                x: 0,
-                y: canvas.height - 20,
-                width: canvas.width,
-                height: 20
-            };
-
-            // Input handling
-            document.addEventListener('keydown', (e) => {
-                if (e.code === 'Space' && gameRunning) {
-                    e.preventDefault();
-                    jump();
-                }
-            });
-
-            canvas.addEventListener('click', () => {
-                if (gameRunning) {
-                    jump();
-                }
-            });
-
-            function jump() {
-                if (skull.grounded) {
-                    skull.dy = -skull.jumpPower;
-                    skull.grounded = false;
-                }
-            }
-
-            function createObstacle() {
-                const obstacle = {
-                    x: canvas.width,
-                    y: ground.y - 30,
-                    width: 20,
-                    height: 30
-                };
-                obstacles.push(obstacle);
-            }
-
-            function updateSkull() {
-                // Apply gravity
-                skull.dy += gravity;
-                skull.y += skull.dy;
-
-                // Ground collision
-                if (skull.y + skull.height >= ground.y) {
-                    skull.y = ground.y - skull.height;
-                    skull.dy = 0;
-                    skull.grounded = true;
-                }
-            }
-
-            function updateObstacles() {
-                // Move obstacles
-                for (let i = obstacles.length - 1; i >= 0; i--) {
-                    obstacles[i].x -= gameSpeed;
-
-                    // Remove obstacles that are off screen
-                    if (obstacles[i].x + obstacles[i].width < 0) {
-                        obstacles.splice(i, 1);
-                        score += 10;
-                        scoreElement.textContent = 'Score: ' + score;
-                        
-                        // Increase game speed gradually
-                        if (score % 100 === 0) {
-                            gameSpeed += 0.5;
-                        }
-                    }
-                }
-
-                // Create new obstacles
-                if (Math.random() < 0.005) {
-                    createObstacle();
-                }
-            }
-
-            function checkCollisions() {
-                for (let obstacle of obstacles) {
-                    if (skull.x < obstacle.x + obstacle.width &&
-                        skull.x + skull.width > obstacle.x &&
-                        skull.y < obstacle.y + obstacle.height &&
-                        skull.y + skull.height > obstacle.y) {
-                        gameRunning = false;
-                        return true;
-                    }
-                }
-                return false;
-            }
-
-            function draw() {
-                // Clear canvas
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-                // Draw ground
-                ctx.fillStyle = '#535353';
-                ctx.fillRect(ground.x, ground.y, ground.width, ground.height);
-
-                // Draw skull player
-                ctx.font = '40px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(skull.emoji, skull.x + skull.width/2, skull.y + skull.height - 5);
-
-                // Draw obstacles
-                ctx.fillStyle = '#535353';
-                for (let obstacle of obstacles) {
-                    ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
-                }
-
-                // Game over screen
-                if (!gameRunning) {
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    
-                    ctx.fillStyle = 'white';
-                    ctx.font = '40px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('Game Over!', canvas.width/2, canvas.height/2 - 20);
-                    ctx.font = '20px Arial';
-                    ctx.fillText('Press F5 to restart', canvas.width/2, canvas.height/2 + 20);
-                }
-            }
-
-            function gameLoop() {
-                if (gameRunning) {
-                    updateSkull();
-                    updateObstacles();
-                    checkCollisions();
-                }
-                
-                draw();
-                requestAnimationFrame(gameLoop);
-            }
-
-            // Start the game
-            gameLoop();
-        </script>
-    </body>
-    </html>
-    """
-
-
 
 # Health check endpoint
 @app.get("/health")
@@ -339,39 +123,84 @@ async def get_chat_history(user_id: int, limit: int = 10, db: Session = Depends(
 # NODE 2: EMBEDDING ENDPOINTS
 # =============================================================================
 
-@app.post("/api/embeddings")
-async def create_embeddings(embedding_data: EmbeddingCreate, db: Session = Depends(get_db)):
-    """
-    Create embeddings from a document file.
-    """
-    try:
-        # Use the DocumentLoaderManager to create embeddings
-        vector_store = DocumentLoaderManager.create_and_store_embeddings(
-            file_path=embedding_data.file_path,
-            chunk_size=embedding_data.chunk_size,
-            chunk_overlap=embedding_data.chunk_overlap
-        )
-        
-        return {
-            "message": "Embeddings created successfully",
-            "file_path": embedding_data.file_path,
-            "status": "completed"
-        }
-    except Exception as e:
-        log_exception(e, "create_embeddings", {"file_path": embedding_data.file_path}, db)
-        raise HTTPException(status_code=500, detail="Failed to create embeddings")
 
-@app.get("/api/embeddings")
-async def get_embeddings(db: Session = Depends(get_db)):
+@app.post("/api/upload-document", response_model=DocumentUploadResponse)
+async def upload_document(
+    file: UploadFile = File(...),
+    chunk_size: int = 500,
+    chunk_overlap: int = 200,
+    db: Session = Depends(get_db)
+):
     """
-    Get all embeddings from the database.
+    Upload a document and automatically create embeddings for it.
     """
     try:
-        embeddings = db.query(Embedding).all()
-        return {"embeddings": embeddings}
+        # Validate file type
+        allowed_extensions = {'.txt', '.md', '.csv', '.pdf'}
+        file_extension = Path(file.filename).suffix.lower()
+        
+        if file_extension not in allowed_extensions:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Unsupported file type: {file_extension}. Allowed types: {', '.join(allowed_extensions)}"
+            )
+        
+        # Create file path
+        file_path = os.path.join(UPLOAD_DIR, file.filename)
+        
+        # Save uploaded file
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Create embeddings using DocumentLoaderManager
+        try:
+            result = DocumentLoaderManager.upload_and_create_embeddings(
+                file_path=file_path,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                embedding_dir="Router/embedding",
+                index_name="document_index"
+            )
+            
+            if not result["success"]:
+                raise Exception(result["error"])
+            
+            # Log to database
+            embedding_record = Embedding(
+                file_path=file_path,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                created_at=datetime.now()
+            )
+            db.add(embedding_record)
+            db.commit()
+            
+            return DocumentUploadResponse(
+                message=f"Document '{file.filename}' uploaded and embeddings created successfully!",
+                file_path=file_path,
+                filename=file.filename,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                embedding_id=embedding_record.id
+            )
+            
+        except Exception as embedding_error:
+            # Clean up uploaded file if embedding creation fails
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Failed to create embeddings: {str(embedding_error)}"
+            )
+            
+    except HTTPException:
+        raise
     except Exception as e:
-        log_exception(e, "get_embeddings", None, db)
-        raise HTTPException(status_code=500, detail="Failed to retrieve embeddings")
+        log_exception(str(e), "upload_document", db=db)
+        # Clean up uploaded file if there's an error
+        if 'file_path' in locals() and os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 # =============================================================================
 # NODE 3: EXCEPTION LOGGING ENDPOINTS

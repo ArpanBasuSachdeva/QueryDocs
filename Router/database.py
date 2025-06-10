@@ -3,7 +3,6 @@ from dotenv import load_dotenv
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text, Boolean
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime
-from Router.exception_utils import log_exception
 
 Base = declarative_base()
 
