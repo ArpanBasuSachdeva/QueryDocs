@@ -26,7 +26,7 @@ class Embedding(Base):
     chunk_size = Column(Integer, default=500)  # Chunk size used for embeddings
     chunk_overlap = Column(Integer, default=200)  # Chunk overlap used for embeddings
     created_at = Column(DateTime, default=datetime.utcnow)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Make nullable
 
     owner = relationship("User", back_populates="embeddings")
 
@@ -37,7 +37,7 @@ class ExceptionLog(Base):
     error_message = Column(Text)
     stack_trace = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     user = relationship("User", back_populates="exception_logs")
 

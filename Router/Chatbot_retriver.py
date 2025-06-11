@@ -27,14 +27,17 @@ except Exception as e:
 # Create a prompt template for the chatbot
 prompt = PromptTemplate(
     template="""
-    "You are an assistant that answers strictly using the context below. "
-            "Do not add any reasoning not present in the context. "
-            "If the answer is not there, reply 'Answer not found in context.'\n\n"
-            f"Context:\n{contexts}\n\n"
-            f"Question: {question}\n"
-            "Answer:"
+    You are a helpful AI assistant that provides accurate and relevant information.
+    Use the following context to answer the user's question.
+    If the context doesn't contain enough information, say you don't know.
+
+    Context: {context}
+
+    User Question: {question}
+
+    Please provide a clear and concise answer:
     """,
-    input_variables=['contexts','question']
+    input_variables=['context', 'question'],   
 )
 
 def format_docs(retrieved_docs):
@@ -45,7 +48,7 @@ def format_docs(retrieved_docs):
 # Create a parallel chain for processing
 if retriever and llm:
     parallel_chain = RunnableParallel({
-        'contexts': retriever | RunnableLambda(format_docs),
+        'context': retriever | RunnableLambda(format_docs),
         'question': RunnablePassthrough()
     })
     
@@ -75,14 +78,36 @@ def augmented_retrieval(user_question):
         if main_chain is None:
             return "I'm sorry, but the chat system is not properly initialized. Please check your configuration."
         
+        # Add debug information to see if retrieval is working
+        print(f"🔍 Searching for context related to: {user_question}")
+        
+        # Test retrieval separately for debugging
+        retrieved_docs = retriever.invoke(user_question)
+        print(f"📄 Found {len(retrieved_docs)} relevant documents")
+        
+        # Show first document snippet for debugging
+        if retrieved_docs:
+            print(f"📝 First document snippet: {retrieved_docs[0].page_content[:100]}...")
+        
         response = main_chain.invoke(user_question)
         return response
     except Exception as e:
-        # Log the exception with details
-        log_exception(e, "Error in augmented_retrieval", {
-            "user_question": user_question,
-            "function": "augmented_retrieval"
-        })
+        # Log the exception with details - create own database session
+        try:
+            from Router.table_creater import SessionLocal
+            db = SessionLocal()
+            log_exception(e, "augmented_retrieval", {
+                "user_question": user_question,
+                "function": "augmented_retrieval"
+            }, db=db)
+            db.close()
+        except Exception as log_error:
+            # If database logging fails, just print
+            print(f"Failed to log exception to database: {log_error}")
+            log_exception(e, "augmented_retrieval", {
+                "user_question": user_question,
+                "function": "augmented_retrieval"
+            })
         return f"Sorry, I encountered an error: {str(e)}"
 
 # Example usage
