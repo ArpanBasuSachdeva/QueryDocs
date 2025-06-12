@@ -124,11 +124,26 @@ class DocumentListResponse(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to Chat System"}
+    return {"message": "Welcome to Chat System", "view_exceptions": "Visit /api/exceptions/table to view exception logs"}  # Added link to exception table
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "message": "Chat system operational"}
+    return {"status": "healthy", "message": "Chat system operational"}  # Health check endpoint
+
+@app.get("/exceptions", response_class=HTMLResponse)
+async def view_exceptions():
+    """Redirect to exception table view"""  # Simple redirect to table view
+    return """
+    <html>
+        <head>
+            <meta http-equiv="refresh" content="0; url=/api/exceptions/table">
+        </head>
+        <body>
+            <p>Redirecting to exception logs...</p>
+            <p>If not redirected, <a href="/api/exceptions/table">click here</a></p>
+        </body>
+    </html>
+    """  # Redirect HTML page
 
 @app.get("/documents", response_model=DocumentListResponse)
 async def list_loaded_documents(db: Session = Depends(get_db)):
@@ -348,14 +363,152 @@ async def get_all_chat_history(limit: int = 50, db: Session = Depends(get_db)):
         log_exception(e, "get_all_chat_history", {"limit": limit}, db=db)  # Log error
         raise HTTPException(status_code=500, detail="Failed to retrieve chat history")  # Return error
 
-@app.get("/api/exceptions")
-async def get_exception_logs(limit: int = 50, db: Session = Depends(get_db)):
+# @app.get("/api/exceptions")
+# async def get_all_exception_logs(limit: int = 50, db: Session = Depends(get_db)):
+#     """Get all exception logs from the system"""  # Added documentation comment
+#     try:
+#         exceptions = db.query(ExceptionLog).order_by(ExceptionLog.created_at.desc()).limit(limit).all()  # Query all exception logs ordered by creation date
+#         return {"exception_logs": exceptions, "count": len(exceptions)}  # Return all exception logs with count
+#     except Exception as e:
+#         log_exception(e, "get_all_exception_logs", None, db=db)  # Log any errors that occur
+#         raise HTTPException(status_code=500, detail="Failed to retrieve exception logs")  # Return error response
+
+@app.get("/api/exceptions/table", response_class=HTMLResponse)
+async def get_exception_logs_table(limit: int = 50, db: Session = Depends(get_db)):
+    """Get all exception logs displayed in HTML table format"""  # Added documentation comment
     try:
-        exceptions = db.query(ExceptionLog).order_by(ExceptionLog.created_at.desc()).limit(limit).all()
-        return {"exception_logs": exceptions, "count": len(exceptions)}
+        exceptions = db.query(ExceptionLog).order_by(ExceptionLog.created_at.desc()).limit(limit).all()  # Query all exception logs ordered by creation date
+        
+        # Build table rows
+        rows_html = ""  # Initialize empty string for table rows
+        for i, exception in enumerate(exceptions, 1):  # Loop through each exception with counter
+            user_id = exception.user_id if exception.user_id else "null"  # Handle null user_id
+            created_at = exception.created_at.strftime("%Y-%m-%d %H:%M:%S") if exception.created_at else "N/A"  # Format timestamp
+            error_msg = exception.error_message[:100] + "..." if exception.error_message and len(exception.error_message) > 100 else (exception.error_message or "N/A")  # Truncate error message
+            stack_trace = exception.stack_trace[:150] + "..." if exception.stack_trace and len(exception.stack_trace) > 150 else (exception.stack_trace or "N/A")  # Truncate stack trace
+            
+            rows_html += f"""
+            <tr>
+                <td>{exception.id}</td>
+                <td>{error_msg}</td>
+                <td>{stack_trace}</td>
+                <td>{user_id}</td>
+                <td>{created_at}</td>
+            </tr>"""  # Add each row to HTML string
+        
+        # Handle empty case
+        if not exceptions:  # If no exceptions found
+            rows_html = '<tr><td colspan="5" style="text-align: center;">No exception logs found</td></tr>'  # Show empty message
+        
+        # Complete HTML document
+        html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exception Logs</title>
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }}
+        .container {{
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        h1 {{
+            color: #333;
+            text-align: center;
+            margin-bottom: 20px;
+        }}
+        .summary {{
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }}
+        th, td {{
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }}
+        th {{
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #495057;
+        }}
+        tr:nth-child(even) {{
+            background-color: #f8f9fa;
+        }}
+        tr:hover {{
+            background-color: #e3f2fd;
+        }}
+        .id-col {{
+            width: 80px;
+            text-align: center;
+        }}
+        .error-col {{
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }}
+        .stack-col {{
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-family: monospace;
+            font-size: 12px;
+        }}
+        .user-col {{
+            width: 100px;
+            text-align: center;
+        }}
+        .date-col {{
+            width: 160px;
+            font-family: monospace;
+            font-size: 12px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚨 Exception Logs</h1>
+        <div class="summary">
+            <h3>📊 Summary</h3>
+            <p><strong>Total rows:</strong> {len(exceptions)} | <strong>Showing:</strong> 1 to {len(exceptions)} | <strong>Page:</strong> 1 of 1</p>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th class="id-col">ID</th>
+                    <th class="error-col">Error Message</th>
+                    <th class="stack-col">Stack Trace</th>
+                    <th class="user-col">User ID</th>
+                    <th class="date-col">Created At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows_html}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>"""  # Complete HTML document
+        
+        return html  # Return complete HTML response
     except Exception as e:
-        log_exception(e, "get_exception_logs", None, db=db)
-        raise HTTPException(status_code=500, detail="Failed to retrieve exception logs")
+        log_exception(e, "get_exception_logs_table", None, db=db)  # Log any errors that occur
+        raise HTTPException(status_code=500, detail="Failed to retrieve exception logs")  # Return error response
 
 @app.get("/api/exceptions/{user_id}")
 async def get_user_exceptions(user_id: int, limit: int = 20, db: Session = Depends(get_db)):
@@ -367,15 +520,6 @@ async def get_user_exceptions(user_id: int, limit: int = 20, db: Session = Depen
     except Exception as e:
         log_exception(e, "get_user_exceptions", {"user_id": user_id}, db=db)
         raise HTTPException(status_code=500, detail="Failed to retrieve user exception logs")
-
-@app.post("/api/exceptions/test")
-async def test_exception_logging(db: Session = Depends(get_db)):
-    try:
-        result = 1 / 0
-        return {"result": result}
-    except Exception as e:
-        log_exception(e, "test_exception_logging", {"test": "intentional_error"}, db=db)
-        return {"message": "Exception logged successfully", "error": str(e)}
 
 @app.delete("/api/exceptions/cleanup")
 async def cleanup_old_exceptions(days_old: int = 30, db: Session = Depends(get_db)):
