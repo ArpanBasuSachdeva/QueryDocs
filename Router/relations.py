@@ -45,7 +45,7 @@ class ChatbotLog(Base):
     __tablename__ = "chatbot_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Make nullable to allow anonymous chats
     message = Column(Text)
     response = Column(Text)
     timestamp = Column(DateTime, default=datetime.utcnow)

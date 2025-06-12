@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.exceptions import RequestValidationError
+from fastapi.exceptions import RequestValidationError, HTTPException as FastAPIHTTPException
 from sqlalchemy.orm import Session
 from Router.table_creater import engine, get_db, Base
 from Router.relations import ExceptionLog, ChatbotLog, Embedding
@@ -62,9 +62,36 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={"detail": exc.errors()}
     )
 
+@app.exception_handler(FastAPIHTTPException)
+async def http_exception_handler(request: Request, exc: FastAPIHTTPException):
+    """Log all HTTPExceptions (like 404) to the database"""
+    try:
+        db = next(get_db())
+        error_details = {
+            "url": str(request.url),
+            "method": request.method,
+            "status_code": exc.status_code,
+            "detail": exc.detail
+        }
+        log_exception(
+            f"HTTPException {exc.status_code} on {request.method} {request.url}: {exc.detail}",
+            "http_exception",
+            error_details,
+            db=db
+        )
+        db.close()
+    except Exception as log_error:
+        print(f"Failed to log HTTPException: {log_error}")
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
+
 class ChatMessage(BaseModel):
-    message: str
-    user_id: Optional[int] = None
+    message: str  # User's message
+    user_id: Optional[int] = None  # User ID (optional)
+    hash_code: Optional[str] = None  # Document hash code (optional)
 
 class ChatResponse(BaseModel):
     response: str
@@ -97,7 +124,7 @@ class DocumentListResponse(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to CopyHaiJi Chat System 💀"}
+    return {"message": "Welcome to Chat System"}
 
 @app.get("/health")
 async def health_check():
@@ -135,7 +162,7 @@ async def list_loaded_documents(db: Session = Depends(get_db)):
                 file_size=file_size,
                 chunk_size=emb.chunk_size or 500,
                 chunk_overlap=emb.chunk_overlap or 200,
-                hash_code=emb.hash_code[:16] + "..." if emb.hash_code else None,
+                hash_code=emb.hash_code if emb.hash_code else None,
                 created_at=emb.created_at,
                 is_active=is_active,
                 status=status
@@ -243,16 +270,22 @@ async def upload_document(file: UploadFile = File(...), chunk_size: int = 500, c
             if not result["success"]:
                 raise Exception(result["error"])
             
-            embedding_record = Embedding(
-                file_path=file_path, chunk_size=chunk_size, chunk_overlap=chunk_overlap, created_at=datetime.now()
-            )
-            db.add(embedding_record)
-            db.commit()
+            # Get the database ID from the result (it's already saved by DocumentLoaderManager)
+            db_id = result["file_info"]["db_id"]
             
+            # --- CLEANUP: Remove any incomplete duplicates for this file_path ---
+            db.query(Embedding).filter(
+                Embedding.file_path == file_path,  # Same file_path
+                Embedding.hash_code == None,       # No hash_code (incomplete)
+                Embedding.embedding_vector == None # No embedding_vector (incomplete)
+            ).delete(synchronize_session=False)  # Delete incomplete duplicates
+            db.commit()  # Commit cleanup
+            # -------------------------------------------------------------
+
             return DocumentUploadResponse(
                 message=f"Document '{file.filename}' uploaded and embeddings created successfully!",
                 file_path=file_path, filename=file.filename, chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap, embedding_id=embedding_record.id
+                chunk_overlap=chunk_overlap, embedding_id=db_id
             )
         except Exception as embedding_error:
             if os.path.exists(file_path):
@@ -269,18 +302,21 @@ async def upload_document(file: UploadFile = File(...), chunk_size: int = 500, c
 @app.post("/chat", response_model=ChatResponse)
 async def chat_with_llm(chat_message: ChatMessage, db: Session = Depends(get_db)):
     try:
-        ai_response = augmented_retrieval(chat_message.message)
+        # Pass hash_code to augmented_retrieval
+        ai_response = augmented_retrieval(chat_message.message, hash_code=chat_message.hash_code)
         
-        if chat_message.user_id:
-            try:
-                chat_log = ChatbotLog(
-                    user_id=chat_message.user_id, message=chat_message.message, response=ai_response
-                )
-                db.add(chat_log)
-                db.commit()
-            except Exception as log_error:
-                log_exception(log_error, "log_chat_interaction", 
-                            {"user_id": chat_message.user_id, "message": chat_message.message}, db=db)
+        # Always save chat logs regardless of user_id (can be None for anonymous chats)
+        try:
+            chat_log = ChatbotLog(
+                user_id=chat_message.user_id,  # Can be None for anonymous users
+                message=chat_message.message, 
+                response=ai_response
+            )
+            db.add(chat_log)  # Add chat log to database
+            db.commit()  # Commit to save the chat history
+        except Exception as log_error:
+            log_exception(log_error, "log_chat_interaction", 
+                        {"user_id": chat_message.user_id, "message": chat_message.message}, db=db)
         
         return ChatResponse(response=ai_response, timestamp=datetime.utcnow())
     except Exception as e:
@@ -298,6 +334,19 @@ async def get_chat_history(user_id: int, limit: int = 20, db: Session = Depends(
     except Exception as e:
         log_exception(e, "get_chat_history", {"user_id": user_id}, db=db)
         raise HTTPException(status_code=500, detail="Failed to retrieve chat history")
+
+@app.get("/chat/history")
+async def get_all_chat_history(limit: int = 50, db: Session = Depends(get_db)):
+    """Get all chat history including anonymous chats"""
+    try:
+        chat_logs = db.query(ChatbotLog).order_by(
+            ChatbotLog.timestamp.desc()
+        ).limit(limit).all()  # Get all chat logs ordered by timestamp
+        
+        return {"chat_history": chat_logs, "count": len(chat_logs)}  # Return all chat history
+    except Exception as e:
+        log_exception(e, "get_all_chat_history", {"limit": limit}, db=db)  # Log error
+        raise HTTPException(status_code=500, detail="Failed to retrieve chat history")  # Return error
 
 @app.get("/api/exceptions")
 async def get_exception_logs(limit: int = 50, db: Session = Depends(get_db)):

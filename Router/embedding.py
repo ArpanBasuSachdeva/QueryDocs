@@ -47,7 +47,7 @@ class DocumentLoaderManager:
     
     @staticmethod
     def create_and_store_embeddings(file_path: str, embedding_dir: str = "Router/embedding", 
-                                  index_name: str = "document_index", chunk_size: int = 500, 
+                                  index_name: str = None, chunk_size: int = 500, 
                                   chunk_overlap: int = 200, user_id: int = None):
         """Create embeddings from document and store them locally and in database."""
         # Ensure embedding directory exists
@@ -59,15 +59,21 @@ class DocumentLoaderManager:
         # Initialize embeddings
         device = "cuda" if torch.cuda.is_available() else "cpu"
         embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",  
-            model_kwargs={'device': device},  
-            encode_kwargs={'normalize_embeddings': True}  
+            model_name="sentence-transformers/all-MiniLM-L6-v2",  # Model name
+            model_kwargs={'device': device},  # Device config
+            encode_kwargs={'normalize_embeddings': True}  # Normalize
         )
         
         # Create vector store
         vector_store = FAISS.from_documents(chunks, embeddings)
         
-        # Save to local directory
+        # Create file hash for this document and chunking
+        hash_code = DocumentLoaderManager.create_file_hash(file_path, chunk_size, chunk_overlap)
+        # Use hash_code as index_name if not provided
+        if index_name is None:
+            index_name = hash_code
+        
+        # Save to local directory using hash_code as index_name
         vector_store.save_local(os.path.join(embedding_dir, index_name))
         
         # Save to database
@@ -106,7 +112,7 @@ class DocumentLoaderManager:
     def upload_and_create_embeddings(file_path: str, chunk_size: int = 500, 
                                    chunk_overlap: int = 200, 
                                    embedding_dir: str = "Router/embedding",
-                                   index_name: str = "document_index",
+                                   index_name: str = None,
                                    user_id: int = None):
         """
         Complete workflow: validate file, create embeddings, and return metadata.
@@ -129,6 +135,10 @@ class DocumentLoaderManager:
                 file_path, chunk_size, chunk_overlap
             )
             
+            # Always use hash_code as index_name
+            hash_code = DocumentLoaderManager.create_file_hash(file_path, chunk_size, chunk_overlap)
+            index_name = hash_code
+            
             if existing_embedding:
                 print(f"Embedding already exists in database for this file")
                 # Load existing vector store
@@ -144,13 +154,14 @@ class DocumentLoaderManager:
                             "chunk_size": chunk_size,
                             "chunk_overlap": chunk_overlap,
                             "db_id": existing_embedding.id,
-                            "existing": True
+                            "existing": True,
+                            "hash_code": hash_code
                         }
                     }
                 except:
                     print("Existing database record found but vector store missing, recreating...")
             
-            # Create embeddings
+            # Create embeddings and save using hash_code as index_name
             vector_store = DocumentLoaderManager.create_and_store_embeddings(
                 file_path=file_path,
                 embedding_dir=embedding_dir,
@@ -179,7 +190,8 @@ class DocumentLoaderManager:
                     "chunk_size": chunk_size,
                     "chunk_overlap": chunk_overlap,
                     "db_id": db_embedding.id if db_embedding else None,
-                    "existing": False
+                    "existing": False,
+                    "hash_code": hash_code
                 }
             }
             
@@ -226,15 +238,40 @@ class DocumentLoaderManager:
                 return existing
             
             # Get embedding vectors from vector store
-            # For demonstration, we'll store the first few embedding vectors as JSON
-            # In production, you might want to store all vectors or use a vector database
-            embeddings_data = {
-                "vector_count": len(vector_store.docstore._dict),
-                "model_name": "sentence-transformers/all-MiniLM-L6-v2",
-                "chunk_size": chunk_size,
-                "chunk_overlap": chunk_overlap,
-                "file_name": Path(file_path).name
-            }
+            # Extract actual embedding vectors and store them properly
+            try:
+                # Extract actual embedding vectors for the first few documents (to keep size manageable)
+                sample_vectors = []  # Store sample vectors
+                
+                # Iterate through the index_to_docstore_id mapping to get vectors
+                for vector_index, doc_id in list(vector_store.index_to_docstore_id.items())[:5]:  # Limit to first 5 vectors
+                    vector = vector_store.index.reconstruct(vector_index).tolist()  # Extract vector from FAISS index
+                    sample_vectors.append({  # Add vector data
+                        "doc_id": doc_id,  # Document ID
+                        "vector_index": vector_index,  # Vector index in FAISS
+                        "vector": vector[:50]  # Store first 50 dimensions to keep size manageable
+                    })
+                
+                embeddings_data = {  # Create embeddings data structure
+                    "vector_count": len(vector_store.docstore._dict),  # Total vector count
+                    "model_name": "sentence-transformers/all-MiniLM-L6-v2",  # Model name
+                    "chunk_size": chunk_size,  # Chunk size
+                    "chunk_overlap": chunk_overlap,  # Chunk overlap
+                    "file_name": Path(file_path).name,  # File name
+                    "sample_vectors": sample_vectors,  # Sample embedding vectors
+                    "vector_dimension": len(sample_vectors[0]["vector"]) if sample_vectors else 0,  # Vector dimension
+                    "total_vector_dimension": vector_store.index.d if hasattr(vector_store.index, 'd') else 0  # Full vector dimension
+                }
+            except Exception as e:  # Handle extraction errors
+                print(f"Warning: Could not extract embedding vectors: {e}")  # Log warning
+                embeddings_data = {  # Fallback data structure
+                    "vector_count": len(vector_store.docstore._dict) if hasattr(vector_store, 'docstore') else 0,  # Vector count
+                    "model_name": "sentence-transformers/all-MiniLM-L6-v2",  # Model name
+                    "chunk_size": chunk_size,  # Chunk size
+                    "chunk_overlap": chunk_overlap,  # Chunk overlap
+                    "file_name": Path(file_path).name,  # File name
+                    "error": str(e)  # Error message
+                }
             
             # Create new embedding record (user_id can be None)
             db_embedding = EmbeddingModel(
@@ -246,13 +283,23 @@ class DocumentLoaderManager:
                 user_id=user_id if user_id else None  # Allow None user_id
             )
             
-            db.add(db_embedding)
-            db.commit()
-            db.refresh(db_embedding)
-            
+            db.add(db_embedding)  # Add new embedding
+            db.commit()  # Commit to DB
+            db.refresh(db_embedding)  # Refresh to get ID
+
+            # --- CLEANUP: Remove incomplete duplicates for this file_path ---
+            db.query(EmbeddingModel).filter(
+                EmbeddingModel.file_path == file_path,  # Same file_path
+                EmbeddingModel.hash_code == None,       # No hash_code (incomplete)
+                EmbeddingModel.embedding_vector == None, # No embedding_vector (incomplete)
+                EmbeddingModel.id != db_embedding.id     # Exclude just-created record
+            ).delete(synchronize_session=False)  # Delete incomplete duplicates
+            db.commit()  # Commit cleanup
+            # -------------------------------------------------------------
+
             print(f"✅ Embedding saved to database with ID: {db_embedding.id}")
-            db.close()
-            return db_embedding
+            db.close()  # Close session
+            return db_embedding  # Return new embedding
             
         except Exception as e:
             db_session = locals().get('db')
@@ -282,6 +329,32 @@ class DocumentLoaderManager:
             if 'db' in locals():
                 db.close()
             return None
+
+    @staticmethod
+    def load_embeddings_by_hash(hash_code: str, embedding_dir: str = "Router/embedding"):
+        """Load embedding metadata and vector store from the database and disk using a hash_code."""
+        from Router.table_creater import SessionLocal  # Import here to avoid circular import
+        from Router.relations import Embedding as EmbeddingModel
+        import json
+        import os
+        device = "cuda" if torch.cuda.is_available() else "cpu"  # Set device for embeddings
+        embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",  # Model name
+            model_kwargs={'device': device},  # Device config
+            encode_kwargs={'normalize_embeddings': True}  # Normalize
+        )
+        db = SessionLocal()  # Create DB session
+        embedding = db.query(EmbeddingModel).filter(EmbeddingModel.hash_code == hash_code).first()  # Query by hash
+        db.close()  # Close session
+        if not embedding:
+            return None, None  # Not found
+        # Try to load the vector store from disk using the hash as index name
+        index_name = hash_code  # Use hash_code as index name for storage
+        vector_store_path = os.path.join(embedding_dir, index_name)
+        if not os.path.exists(vector_store_path):
+            return None, embedding  # Metadata found, but no vector store
+        vector_store = FAISS.load_local(vector_store_path, embeddings, allow_dangerous_deserialization=True)  # Load vector store
+        return vector_store, embedding  # Return both
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
