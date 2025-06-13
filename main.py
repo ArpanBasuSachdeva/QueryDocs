@@ -124,26 +124,13 @@ class DocumentListResponse(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to Chat System", "view_exceptions": "Visit /api/exceptions/table to view exception logs"}  # Added link to exception table
+    return {"message": "Welcome to Chat System", }  # Added link to exception table
 
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "message": "Chat system operational"}  # Health check endpoint
 
-@app.get("/exceptions", response_class=HTMLResponse)
-async def view_exceptions():
-    """Redirect to exception table view"""  # Simple redirect to table view
-    return """
-    <html>
-        <head>
-            <meta http-equiv="refresh" content="0; url=/api/exceptions/table">
-        </head>
-        <body>
-            <p>Redirecting to exception logs...</p>
-            <p>If not redirected, <a href="/api/exceptions/table">click here</a></p>
-        </body>
-    </html>
-    """  # Redirect HTML page
+ 
 
 @app.get("/documents", response_model=DocumentListResponse)
 async def list_loaded_documents(db: Session = Depends(get_db)):

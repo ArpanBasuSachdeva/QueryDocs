@@ -13,6 +13,48 @@ from typing import List
 from Router.table_creater import SessionLocal
 from Router.relations import Embedding as EmbeddingModel
 
+# OCR-related imports for handling scanned PDFs
+try:
+    from pdf2image import convert_from_path  # Convert PDF pages to images
+    import pytesseract  # OCR text extraction from images
+    from PIL import Image  # Image processing support
+    OCR_AVAILABLE = True  # Flag to track OCR availability
+except ImportError as e:
+    print(f"[WARNING] OCR libraries not available: {e}")  # Log import warning
+    OCR_AVAILABLE = False  # Mark OCR as unavailable
+
+# OCR PDF Loader class for scanned or image-based PDFs
+class OCRPDFLoader:
+    def __init__(self, file_path: str):
+        self.file_path = file_path  # Store the PDF file path
+    
+    def load(self) -> List[Document]:
+        """Convert PDF pages to images and extract text using OCR."""
+        if not OCR_AVAILABLE:  # Check if OCR libraries are available
+            raise ImportError("OCR libraries (pdf2image, pytesseract, PIL) are not installed. Install with: pip install pdf2image pytesseract Pillow")
+        
+        try:
+            # Test if tesseract is available in system PATH
+            pytesseract.get_tesseract_version()  # This will raise exception if tesseract not found
+        except pytesseract.TesseractNotFoundError:
+            raise RuntimeError("Tesseract OCR is not installed on the system. Please install it:\n"
+                             "Ubuntu/Debian: sudo apt-get install tesseract-ocr\n"
+                             "CentOS/RHEL: sudo yum install tesseract\n"
+                             "macOS: brew install tesseract\n"
+                             "Windows: Download from https://github.com/UB-Mannheim/tesseract/wiki")
+        except Exception as e:
+            print(f"[WARNING] Could not verify Tesseract installation: {e}")  # Log verification warning
+        
+        try:
+            pages = convert_from_path(self.file_path)  # Convert PDF to images
+            docs = []  # Initialize document list
+            for i, img in enumerate(pages):  # Process each page image
+                text = pytesseract.image_to_string(img)  # Extract text using OCR
+                docs.append(Document(page_content=text, metadata={"page": i + 1}))  # Create document with page metadata
+            return docs  # Return list of documents
+        except Exception as e:
+            raise RuntimeError(f"OCR processing failed for {self.file_path}: {str(e)}")  # Provide detailed error message
+
 class DocumentLoaderManager:
     loader_map = {
         '.txt': TextLoader,
@@ -23,12 +65,37 @@ class DocumentLoaderManager:
 
     @staticmethod
     def load(file_path: str) -> List[Document]:
-        suffix = Path(file_path).suffix.lower()
-        loader_cls = DocumentLoaderManager.loader_map.get(suffix)
-        if not loader_cls:
+        suffix = Path(file_path).suffix.lower()  # Get file extension
+        loader_cls = DocumentLoaderManager.loader_map.get(suffix)  # Get appropriate loader class
+        if not loader_cls:  # Check if file type is supported
             raise ValueError(f"Unsupported file type: {suffix}")
-        loader = loader_cls(file_path)
-        return loader.load()
+        
+        # For PDF files, try standard loader first, then fallback to OCR
+        if suffix == '.pdf':
+            try:
+                loader = PyPDFLoader(file_path)  # Try standard PDF loader
+                docs = loader.load()  # Load documents
+                # Check if any text was extracted from the PDF
+                if all(not doc.page_content.strip() for doc in docs):
+                    raise ValueError("No text extracted by PyPDFLoader.")  # Trigger OCR fallback
+                return docs  # Return successfully loaded documents
+            except Exception as e:
+                print(f"[INFO] PDF parsing failed ({e}); attempting OCR fallback...")  # Log fallback info
+                try:
+                    return OCRPDFLoader(file_path).load()  # Use OCR loader as fallback
+                except (ImportError, RuntimeError) as ocr_error:
+                    # OCR is not available or failed, return empty document with error info
+                    print(f"[ERROR] OCR fallback failed: {ocr_error}")  # Log OCR failure
+                    # Return a document with error information instead of failing completely
+                    error_doc = Document(
+                        page_content=f"[ERROR] Could not extract text from PDF. Standard PDF parsing failed, and OCR is not available: {str(ocr_error)}",
+                        metadata={"error": True, "original_error": str(e), "ocr_error": str(ocr_error)}
+                    )
+                    return [error_doc]  # Return error document to prevent complete failure
+        
+        # For non-PDF files, use standard loader
+        loader = loader_cls(file_path)  # Create loader instance
+        return loader.load()  # Load and return documents
     
     @staticmethod
     def load_and_join_content(file_path: str) -> str:
