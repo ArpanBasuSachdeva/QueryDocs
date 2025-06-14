@@ -2,11 +2,12 @@
 fastapi>=0.104.0
 uvicorn>=0.24.0
 streamlit>=1.25.0
+
 # Core LangChain dependencies
 langchain-core>=0.1.0
 langchain-openai>=0.0.5
 langchain-community>=0.0.10
-langchain>=0.1.0
+langchain-huggingface>=0.0.1
 
 # Database and ORM
 sqlalchemy>=2.0.0

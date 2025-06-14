@@ -9,7 +9,7 @@ import uuid
 
 # Constants
 API_BASE_URL = "http://127.0.0.1:8000"
-UPLOAD_DIR = "CopyHaiJi/uploads"
+UPLOAD_DIR = "CopyHaiJi//uploads"
 
 # Create directories if they don't exist
 base_dir = Path("CopyHaiJi")

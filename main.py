@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI()
-UPLOAD_DIR = "CopyHaiJi/uploads"
+UPLOAD_DIR = os.path.join("CopyHaiJi", "uploads")
 Path(UPLOAD_DIR).mkdir(exist_ok=True)
 
 app.add_middleware(
