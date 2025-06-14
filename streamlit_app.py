@@ -1,21 +1,28 @@
 import streamlit as st
-import requests
 import pandas as pd
 from datetime import datetime
 import os
 from pathlib import Path
 import json
 import uuid
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.vectorstores import FAISS
+import tempfile
+import shutil
 
 # Constants
-API_BASE_URL = "http://127.0.0.1:8000"
-UPLOAD_DIR = "CopyHaiJi//uploads"
+UPLOAD_DIR = "uploads"
+VECTOR_STORE_DIR = "vector_store"
 
 # Create directories if they don't exist
-base_dir = Path("CopyHaiJi")
-base_dir.mkdir(exist_ok=True)
-upload_dir = base_dir / "uploads"
+upload_dir = Path(UPLOAD_DIR)
 upload_dir.mkdir(exist_ok=True)
+vector_store_dir = Path(VECTOR_STORE_DIR)
+vector_store_dir.mkdir(exist_ok=True)
+
+# Initialize embeddings
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 # Page config
 st.set_page_config(
@@ -31,82 +38,86 @@ if 'selected_document_hash' not in st.session_state:
     st.session_state.selected_document_hash = None
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
+if 'documents' not in st.session_state:
+    st.session_state.documents = []
 
 # Helper functions
 def get_documents():
-    try:
-        response = requests.get(f"{API_BASE_URL}/documents")
-        if response.status_code == 200:
-            return response.json()["documents"]
-        st.error(f"Failed to fetch documents: {response.status_code}")
-        return []
-    except Exception as e:
-        st.error(f"Error fetching documents: {str(e)}")
-        return []
+    return st.session_state.documents
 
-def get_chat_history():
-    try:
-        response = requests.get(f"{API_BASE_URL}/chat/history")
-        if response.status_code == 200:
-            return response.json()["chat_history"]
-        st.error(f"Failed to fetch chat history: {response.status_code}")
-        return []
-    except Exception as e:
-        st.error(f"Error fetching chat history: {str(e)}")
-        return []
+def save_document_info(filename, hash_code, file_size, status="processed"):
+    doc_info = {
+        "filename": filename,
+        "hash_code": hash_code,
+        "file_size": file_size,
+        "status": status,
+        "created_at": datetime.now().isoformat(),
+        "is_active": True
+    }
+    st.session_state.documents.append(doc_info)
+    return doc_info
 
-def get_exceptions():
+def process_document(file, chunk_size, chunk_overlap):
     try:
-        response = requests.get(f"{API_BASE_URL}/api/exceptions/table")
-        if response.status_code == 200:
-            return response.text
-        st.error(f"Failed to fetch exceptions: {response.status_code}")
-        return ""
-    except Exception as e:
-        st.error(f"Error fetching exceptions: {str(e)}")
-        return ""
+        # Create a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.name)[1]) as tmp_file:
+            tmp_file.write(file.getvalue())
+            tmp_file_path = tmp_file.name
 
-def send_chat_message(message, hash_code):
-    try:
-        payload = json.dumps({
-            "message": message,
-            "hash_code": hash_code,
-            "session_id": st.session_state.session_id
-        })
-        headers = {'Content-Type': 'application/json'}
-        response = requests.post(
-            f"{API_BASE_URL}/chat",
-            data=payload,
-            headers=headers
+        # Read the file content
+        with open(tmp_file_path, 'r', encoding='utf-8') as f:
+            text = f.read()
+
+        # Split text into chunks
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap
         )
-        if response.status_code == 200:
-            return True, response.json()
-        return False, f"Failed to send message: {response.status_code}"
-    except Exception as e:
-        return False, f"Error sending message: {str(e)}"
+        chunks = text_splitter.split_text(text)
 
-def upload_document(file, chunk_size, chunk_overlap):
-    try:
-        files = {"file": (file.name, file.getvalue())}
-        params = {
-            "chunk_size": chunk_size,
-            "chunk_overlap": chunk_overlap,
-            "session_id": st.session_state.session_id
-        }
-        response = requests.post(
-            f"{API_BASE_URL}/upload-document",
-            files=files,
-            params=params
+        # Generate hash code for the document
+        hash_code = str(uuid.uuid4())
+
+        # Create and save vector store
+        vector_store = FAISS.from_texts(chunks, embeddings)
+        vector_store.save_local(f"{VECTOR_STORE_DIR}/{hash_code}")
+
+        # Save document info
+        doc_info = save_document_info(
+            filename=file.name,
+            hash_code=hash_code,
+            file_size=len(file.getvalue())
         )
-        if response.status_code == 200:
-            return True, response.json()
-        return False, f"Failed to upload document: {response.status_code}"
+
+        # Clean up temporary file
+        os.unlink(tmp_file_path)
+
+        return True, doc_info
     except Exception as e:
-        return False, f"Error uploading document: {str(e)}"
+        return False, str(e)
+
+def query_document(message, hash_code):
+    try:
+        # Load vector store
+        vector_store = FAISS.load_local(f"{VECTOR_STORE_DIR}/{hash_code}", embeddings)
+        
+        # Perform similarity search
+        docs = vector_store.similarity_search(message, k=3)
+        
+        # Combine relevant chunks
+        context = "\n".join([doc.page_content for doc in docs])
+        
+        # Here you would typically use an LLM to generate a response
+        # For now, we'll return the context as the response
+        response = f"Based on the document context:\n\n{context}"
+        
+        return True, {"response": response}
+    except Exception as e:
+        return False, str(e)
 
 # Sidebar
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ["Chat", "Upload Document", "Documents", "Chat History", "Exceptions"])
+page = st.sidebar.radio("Go to", ["Chat", "Upload Document", "Documents", "Chat History"])
 
 # Display session ID in sidebar
 st.sidebar.markdown("---")
@@ -141,7 +152,7 @@ if page == "Chat":
             user_message = st.text_input("Enter your message:")
             if st.button("Send"):
                 if user_message:
-                    success, response = send_chat_message(
+                    success, response = query_document(
                         message=user_message,
                         hash_code=st.session_state.selected_document_hash
                     )
@@ -178,7 +189,7 @@ elif page == "Upload Document":
     chunk_overlap = st.number_input("Chunk Overlap", min_value=50, max_value=500, value=200)
     
     if uploaded_file and st.button("Upload"):
-        success, response = upload_document(uploaded_file, chunk_size, chunk_overlap)
+        success, response = process_document(uploaded_file, chunk_size, chunk_overlap)
         if success:
             st.success("Document uploaded successfully!")
             st.json(response)
@@ -214,9 +225,8 @@ elif page == "Chat History":
     st.title("💬 Chat History")
     
     # Display chat history
-    chat_history = get_chat_history()
-    if chat_history:
-        for chat in chat_history:
+    if st.session_state.chat_history:
+        for chat in st.session_state.chat_history:
             with st.expander(f"Chat at {chat['timestamp']}"):
                 st.write(f"**User:** {chat['message']}")
                 st.write(f"**AI:** {chat['response']}")
@@ -225,14 +235,4 @@ elif page == "Chat History":
                 if chat.get('session_id'):
                     st.write(f"**Session ID:** {chat['session_id']}")
     else:
-        st.info("No chat history available")
-
-elif page == "Exceptions":
-    st.title("⚠️ Exception Logs")
-    
-    # Exception table
-    exceptions_html = get_exceptions()
-    if exceptions_html:
-        st.components.v1.html(exceptions_html, height=600)
-    else:
-        st.info("No exception logs available") 
+        st.info("No chat history available") 
