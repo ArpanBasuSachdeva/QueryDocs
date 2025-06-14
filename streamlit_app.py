@@ -8,7 +8,7 @@ import json
 import uuid
 
 # Constants
-API_BASE_URL = "https://b8f9-2401-4900-838e-e5d7-a45d-6ffa-5b23-c7ac.ngrok-free.app"
+API_BASE_URL = "https://1d77-2401-4900-838e-e5d7-a45d-6ffa-5b23-c7ac.ngrok-free.app"
 UPLOAD_DIR = "CopyHaiJi/uploads"
 
 # Create directories if they don't exist
