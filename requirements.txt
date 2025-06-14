@@ -1,3 +1,8 @@
+python-3.11.4
+numpy>=1.25.0
+pip>=23.0.1
+
+
 # Web Framework
 fastapi==0.104.1
 uvicorn==0.24.0
