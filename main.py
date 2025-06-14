@@ -16,12 +16,20 @@ import os
 import json
 from pathlib import Path
 import shutil
+from fastapi.middleware.cors import CORSMiddleware
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI()
-UPLOAD_DIR = "uploads"
+UPLOAD_DIR = "CopyHaiJi/uploads"
 Path(UPLOAD_DIR).mkdir(exist_ok=True)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],            
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # Custom exception handler for validation errors
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -266,7 +274,7 @@ async def upload_document(file: UploadFile = File(...), chunk_size: int = 500, c
         try:
             result = DocumentLoaderManager.upload_and_create_embeddings(
                 file_path=file_path, chunk_size=chunk_size, chunk_overlap=chunk_overlap,
-                embedding_dir="Router/embedding", index_name="document_index"
+                embedding_dir="CopyHaiJi/Router/embedding", index_name="document_index"
             )
             
             if not result["success"]:
@@ -332,7 +340,21 @@ async def get_chat_history(user_id: int, limit: int = 20, db: Session = Depends(
             ChatbotLog.user_id == user_id
         ).order_by(ChatbotLog.timestamp.desc()).limit(limit).all()
         
-        return {"user_id": user_id, "chat_history": chat_logs, "count": len(chat_logs)}
+        # Convert SQLAlchemy models to dictionaries
+        chat_history = []
+        for log in chat_logs:
+            chat_history.append({
+                'message': log.message,
+                'response': log.response,
+                'timestamp': log.timestamp.isoformat() if log.timestamp else None,
+                'user_id': log.user_id
+            })
+        
+        return {
+            "user_id": user_id,
+            "chat_history": chat_history,
+            "count": len(chat_history)
+        }
     except Exception as e:
         log_exception(e, "get_chat_history", {"user_id": user_id}, db=db)
         raise HTTPException(status_code=500, detail="Failed to retrieve chat history")

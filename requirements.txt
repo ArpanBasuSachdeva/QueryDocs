@@ -1,6 +1,6 @@
 # Web Framework
-fastapi>=0.104.0
-uvicorn>=0.24.0
+fastapi==0.104.1
+uvicorn==0.24.0
 
 # Core LangChain dependencies
 langchain-core>=0.1.0
@@ -9,7 +9,7 @@ langchain-community>=0.0.10
 langchain>=0.1.0
 
 # Database and ORM
-sqlalchemy>=2.0.0
+sqlalchemy==2.0.23
 alembic>=1.12.0
 psycopg2-binary>=2.9.0
 
@@ -35,8 +35,14 @@ python-dotenv>=1.0.0
 tiktoken>=0.5.0
 
 # Data manipulation
-pandas>=2.0.0
+pandas==2.1.3
 
 # Additional dependencies for Hugging Face
 huggingface-hub>=0.16.0
-tokenizers>=0.13.0 
+tokenizers>=0.13.0
+
+# Added from the code block
+pydantic==2.5.2
+python-multipart==0.0.6
+requests==2.31.0
+streamlit==1.29.0 

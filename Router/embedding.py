@@ -113,7 +113,7 @@ class DocumentLoaderManager:
         return chunks
     
     @staticmethod
-    def create_and_store_embeddings(file_path: str, embedding_dir: str = "Router/embedding", 
+    def create_and_store_embeddings(file_path: str, embedding_dir: str = "CopyHaiJi/Router/embedding", 
                                   index_name: str = None, chunk_size: int = 500, 
                                   chunk_overlap: int = 200, user_id: int = None):
         """Create embeddings from document and store them locally and in database."""
@@ -159,7 +159,7 @@ class DocumentLoaderManager:
         return vector_store
     
     @staticmethod
-    def load_embeddings(embedding_dir: str = "Router/embedding", index_name: str = "document_index"):
+    def load_embeddings(embedding_dir: str = "CopyHaiJi/Router/embedding", index_name: str = "document_index"):
         """Load embeddings from local storage."""
         device = "cuda" if torch.cuda.is_available() else "cpu"
         embeddings = HuggingFaceEmbeddings(
@@ -178,7 +178,7 @@ class DocumentLoaderManager:
     @staticmethod
     def upload_and_create_embeddings(file_path: str, chunk_size: int = 500, 
                                    chunk_overlap: int = 200, 
-                                   embedding_dir: str = "Router/embedding",
+                                   embedding_dir: str = "CopyHaiJi/Router/embedding",
                                    index_name: str = None,
                                    user_id: int = None):
         """
@@ -398,7 +398,7 @@ class DocumentLoaderManager:
             return None
 
     @staticmethod
-    def load_embeddings_by_hash(hash_code: str, embedding_dir: str = "Router/embedding"):
+    def load_embeddings_by_hash(hash_code: str, embedding_dir: str = "CopyHaiJi/Router/embedding"):
         """Load embedding metadata and vector store from the database and disk using a hash_code."""
         from Router.table_creater import SessionLocal  # Import here to avoid circular import
         from Router.relations import Embedding as EmbeddingModel

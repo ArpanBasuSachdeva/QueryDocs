@@ -43,6 +43,9 @@ prompt = PromptTemplate(
     - Also Do not tell the user to be professional
     - If the rephrased question can only be answered by going out of context politely decline
     - You should keep the conversation professional and not stray from the topic
+    - Do not perform even simple math operations (e.g., addition, percentages, comparisons, etc.).
+    - You may reason within the context if the information is logically deducible.
+    - Do not make any assumptions or guesses.
     - All the conversation should be within the provided {context}
 
     PII PROTECTION:
