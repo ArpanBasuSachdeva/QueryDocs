@@ -1,6 +1,6 @@
-# PrudentBit - Intelligent Document Chat System
+# QueryDocs - Intelligent Document Chat System
 
-PrudentBit is an advanced document management and AI-powered chat system that allows users to upload documents, interact with them through an AI interface, and maintain detailed chat histories. The system uses document embeddings and intelligent retrieval to provide context-aware responses.
+QueryDocs is an advanced document management and AI-powered chat system that allows users to upload documents, interact with them through an AI interface, and maintain detailed chat histories. The system uses document embeddings and intelligent retrieval to provide context-aware responses.
 
 ## 🌟 Features
 
@@ -63,8 +63,8 @@ PrudentBit is an advanced document management and AI-powered chat system that al
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/prudentbit.git
-cd prudentbit
+git clone https://github.com/yourusername/querydocs.git
+cd querydocs
 ```
 
 2. Create a virtual environment:
