@@ -1,7 +1,7 @@
 # Web Framework
 fastapi>=0.104.0
 uvicorn>=0.24.0
-
+streamlit>=1.25.0
 # Core LangChain dependencies
 langchain-core>=0.1.0
 langchain-openai>=0.0.5
