@@ -8,7 +8,7 @@ import json
 import uuid
 
 # Constants
-API_BASE_URL = os.getenv('API_BASE_URL', 'http://127.0.0.1:8000')  # Use environment variable with local fallback
+API_BASE_URL = 'https://colt-pleasant-seagull.ngrok-free.app'  # Direct ngrok URL
 UPLOAD_DIR = "CopyHaiJi//uploads"
 
 # Create directories if they don't exist
@@ -35,10 +35,16 @@ if 'chat_history' not in st.session_state:
 # Helper functions
 def get_documents():
     try:
-        response = requests.get(f"{API_BASE_URL}/documents")
+        response = requests.get(f"{API_BASE_URL}/documents/", timeout=10)  # Added timeout
         if response.status_code == 200:
             return response.json()["documents"]
         st.error(f"Failed to fetch documents: {response.status_code}")
+        return []
+    except requests.exceptions.ConnectionError:
+        st.error("Connection Error: Could not connect to the server. Please ensure the server is running and ngrok tunnel is active.")
+        return []
+    except requests.exceptions.Timeout:
+        st.error("Timeout Error: Server took too long to respond. Please try again.")
         return []
     except Exception as e:
         st.error(f"Error fetching documents: {str(e)}")
@@ -46,7 +52,7 @@ def get_documents():
 
 def get_chat_history():
     try:
-        response = requests.get(f"{API_BASE_URL}/chat/history")
+        response = requests.get(f"{API_BASE_URL}/chat/history/")
         if response.status_code == 200:
             return response.json()["chat_history"]
         st.error(f"Failed to fetch chat history: {response.status_code}")
@@ -57,7 +63,7 @@ def get_chat_history():
 
 def get_exceptions():
     try:
-        response = requests.get(f"{API_BASE_URL}/api/exceptions/table")
+        response = requests.get(f"{API_BASE_URL}/api/exceptions/table/")
         if response.status_code == 200:
             return response.text
         st.error(f"Failed to fetch exceptions: {response.status_code}")
@@ -75,7 +81,7 @@ def send_chat_message(message, hash_code):
         })
         headers = {'Content-Type': 'application/json'}
         response = requests.post(
-            f"{API_BASE_URL}/chat",
+            f"{API_BASE_URL}/chat/",
             data=payload,
             headers=headers
         )
@@ -94,7 +100,7 @@ def upload_document(file, chunk_size, chunk_overlap):
             "session_id": st.session_state.session_id
         }
         response = requests.post(
-            f"{API_BASE_URL}/upload-document",
+            f"{API_BASE_URL}/upload-document/",
             files=files,
             params=params
         )
